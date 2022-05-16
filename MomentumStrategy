@@ -1,0 +1,729 @@
+# Import Packages
+
+import pandas as pd
+import numpy as np 
+import datetime as dt
+import pandas_datareader.data as web
+import matplotlib.pyplot as plt
+import scipy.stats as st
+
+
+portfolios = web.DataReader('6_Portfolios_ME_Prior_12_2_Daily', 'famafrench', start = 1900)
+print(portfolios['DESCR'])
+
+returns_VW = portfolios[0]
+
+returns_VW.replace(-99.99, np.nan, inplace = True)
+returns_VW.replace(-999, np.nan, inplace = True)
+returns_VW.dropna()
+# There are no missing values, size does not change
+
+returns_VW.head()
+
+
+cum_ret_WV = pd.DataFrame(np.cumprod((returns_VW/100) + 1)) - 1
+cum_ret_WV.head()
+
+
+
+graph1 = plt.plot(cum_ret_WV)
+lables1 = ("SMALL LoPRIOR", "ME1 PRIOR2", "SMALL HiPRIOR", "BIG LoPRIOR", "ME2 PRIOR2", "BIG HiPRIOR")
+plt.xlabel('Time', fontsize=18)
+plt.ylabel('LOG-Returns', fontsize=18)
+plt.legend(graph1, lables1)
+plt.yscale('log') 
+plt.show()
+# Plot would look nicer if we used gross returns
+
+DT_index = returns_VW.index
+
+
+
+
+
+
+# 1. Strategy - Classic Momentum Strategy
+long_s1 =  np.average([returns_VW["SMALL HiPRIOR"], returns_VW["BIG HiPRIOR"]], axis = 0)
+short_s1 = np.average([returns_VW["SMALL LoPRIOR"], returns_VW["BIG LoPRIOR"]], axis = 0)
+print(long_s1[:5])
+print(short_s1[:5])
+
+# Perfomance - Return
+momentum_perf_s1 = pd.Series(long_s1 - short_s1)
+momentum_perf_s1.index = DT_index
+print("\n")
+print(momentum_perf_s1.head())
+
+#Standard Deviation
+std_s1 = np.std(momentum_perf_s1) * np.sqrt(252)
+print("\n")
+print("Annualized Standard Deviation: " + str(std_s1))
+
+# Monthly Returns
+momentum_perf_s1_monthly = momentum_perf_s1.resample("M").agg(lambda x: (((x/100 + 1).prod() - 1)*100))
+cum_momentum_perf_s1_monthly = (np.cumprod(momentum_perf_s1_monthly/100 + 1) - 1) * 100
+
+print("\n")
+print(momentum_perf_s1_monthly.head(10))
+print("\n")
+print(cum_momentum_perf_s1_monthly.head(10))
+
+
+
+# STRATEGY 2 - Momentum using only large companies
+momentum_perf_s2 = returns_VW["BIG HiPRIOR"] - returns_VW["BIG LoPRIOR"]
+momentum_perf_s2.index = DT_index
+print(momentum_perf_s2)
+
+# Standard deviation
+std_s2 = np.std(momentum_perf_s2) * np.sqrt(252)
+print("\n")
+print("Annualized Standard Deviation: " + str(std_s2))
+
+# Monthly Returns
+momentum_perf_s2_monthly = momentum_perf_s2.resample("M").agg(lambda x: (((x/100 + 1).prod() - 1)*100))
+cum_momentum_perf_s2_monthly = (np.cumprod(momentum_perf_s2_monthly/100 + 1) - 1) * 100
+
+print("\n")
+print(momentum_perf_s2_monthly.head(10))
+print("\n")
+print(cum_momentum_perf_s2_monthly.head(10))
+
+
+
+
+# STRATEGY 3 - Momentum using only small companies
+momentum_perf_s3 = returns_VW["SMALL HiPRIOR"] - returns_VW["SMALL LoPRIOR"] 
+momentum_perf_s3.index = DT_index
+print(momentum_perf_s3)
+print("\n")
+
+# Standard deviation
+std_s3 = np.std(momentum_perf_s3) * np.sqrt(252)
+print("\n")
+print("Annualized Standard Deviation: " + str(std_s3))
+
+# Monthly Returns
+momentum_perf_s3_monthly = momentum_perf_s3.resample("M").agg(lambda x: (((x/100 + 1).prod() - 1)*100))
+cum_momentum_perf_s3_monthly = (np.cumprod(momentum_perf_s3_monthly/100 + 1) - 1) * 100
+
+print("\n")
+print(momentum_perf_s3_monthly.head(10))
+print("\n")
+print(cum_momentum_perf_s3_monthly.head(10))
+
+
+
+# Plot
+cumulative_monthly_ret = (pd.DataFrame([cum_momentum_perf_s1_monthly, cum_momentum_perf_s2_monthly, cum_momentum_perf_s3_monthly])).T
+cumulative_monthly_ret.columns = ["S1", "S2", "S3"]
+
+graph2 = plt.plot(cumulative_monthly_ret)
+lables2 = ("S1", "S2", "S3")
+plt.xlabel('Time', fontsize=18)
+plt.ylabel('LOG-Returns', fontsize=18)
+plt.legend(graph2, lables2)
+plt.yscale('log')
+plt.show()
+
+
+
+# a) Annualized Std. for previous 6 Months
+
+moving_std_s1 = ((momentum_perf_s1.rolling(window=126).std() * np.sqrt(252)).resample("M").last()).shift(periods = 1, axis = 0)
+moving_std_s2 = ((momentum_perf_s2.rolling(window=126).std() * np.sqrt(252)).resample("M").last()).shift(periods = 1, axis = 0)
+moving_std_s3 = ((momentum_perf_s3.rolling(window=126).std() * np.sqrt(252)).resample("M").last()).shift(periods = 1, axis = 0)
+
+print(moving_std_s1.head(10))
+print(moving_std_s2.head(10))
+print(moving_std_s3.head(10))
+
+
+
+#b) 
+risk_mng_momentum_s1 = ((momentum_perf_s1_monthly / moving_std_s1) * 12).dropna()
+risk_mng_momentum_s2 = ((momentum_perf_s2_monthly / moving_std_s2) * 12).dropna()
+risk_mng_momentum_s3 = ((momentum_perf_s3_monthly / moving_std_s3) * 12).dropna()
+
+print(risk_mng_momentum_s1.head(10))
+print("\n")
+print(risk_mng_momentum_s2.head(10))
+print("\n")
+print(risk_mng_momentum_s3.head(10))
+
+
+# c)
+# Statistics for full time period
+
+
+# Max - Risk Managed Strategies:
+max_s1 = np.max(risk_mng_momentum_s1)
+max_s2 = np.max(risk_mng_momentum_s2)
+max_s3 = np.max(risk_mng_momentum_s3)
+print("\nMax Value - Risk Managed Strategy 1: " + str(max_s1))
+print("\nMax Value - Risk Managed Strategy 2: " + str(max_s2))
+print("\nMax Value - Risk Managed Strategy 3: " + str(max_s3))
+
+# Max - UnScaled Strat:
+max_s1_US = np.max(momentum_perf_s1_monthly)
+max_s2_US = np.max(momentum_perf_s2_monthly)
+max_s3_US = np.max(momentum_perf_s3_monthly)
+print("\nMax Value - UnScaled Strat Strategy 1: "+ str(max_s1_US))
+print("\nMax Value - UnScaled Strat Strategy 2: "+ str(max_s2_US))
+print("\nMax Value - UnScaled Strat Strategy 3: "+ str(max_s3_US))
+
+# Min - Risk Managed Strategies:
+min_s1 = np.min(risk_mng_momentum_s1)
+min_s2 = np.min(risk_mng_momentum_s2)
+min_s3 = np.min(risk_mng_momentum_s3)
+print("\nMin Value - Risk Managed Strategy 1: "+ str(min_s1))
+print("\nMin Value - Risk Managed Strategy 2: "+ str(min_s2))
+print("\nMin Value - Risk Managed Strategy 3: "+ str(min_s3))
+
+# Min - UnScaled Strat:
+min_s1_US = np.min(momentum_perf_s1_monthly)
+min_s2_US = np.min(momentum_perf_s2_monthly)
+min_s3_US = np.min(momentum_perf_s3_monthly)
+print("\nMin Value - UnScaled Strat Strategy: "+ str(min_s1_US))
+print("\nMin Value - UnScaled Strat Strategy: "+ str(min_s2_US))
+print("\nMin Value - UnScaled Strat Strategy: "+ str(min_s3_US))
+
+
+
+# Kurtosis - Risk Managed Strategies:
+kurt_s1 = st.kurtosis(risk_mng_momentum_s1)
+kurt_s2 = st.kurtosis(risk_mng_momentum_s2)
+kurt_s3 = st.kurtosis(risk_mng_momentum_s3)
+
+# Kurtosis - UnScaled Strat:
+kurt_s1_US = st.kurtosis(momentum_perf_s1_monthly)
+kurt_s2_US = st.kurtosis(momentum_perf_s2_monthly)
+kurt_s3_US = st.kurtosis(momentum_perf_s3_monthly)
+
+
+# Skew - Risk Managed Strategies:
+skew_s1 = st.skew(risk_mng_momentum_s1)
+skew_s2 = st.skew(risk_mng_momentum_s2)
+skew_s3 = st.skew(risk_mng_momentum_s3)
+
+# Skew - UnScaled Strat:
+skew_s1_US = st.skew(momentum_perf_s1_monthly)
+skew_s2_US = st.skew(momentum_perf_s2_monthly)
+skew_s3_US = st.skew(momentum_perf_s3_monthly)
+
+
+print("Kurtosis - Risk Managed 1: " + str(kurt_s1))
+print("Kurtosis - Risk Managed 2: " + str(kurt_s2))
+print("Kurtosis - Risk Managed 3: " + str(kurt_s3))
+print("\nKurtosis - Unscaled 1: " + str(kurt_s1_US))
+print("Kurtosis - Unscaled 2: " + str(kurt_s2_US))
+print("Kurtosis - Unscaled 3: " + str(kurt_s3_US))
+print("\nSkew - Risk Managed 1: " + str(skew_s1))
+print("Skew - Risk Managed 2: " + str(skew_s2))
+print("Skew - Risk Managed 3: " + str(skew_s3))
+print("\nSkew - Unscaled 1: " + str(skew_s1_US))
+print("Skew - Unscaled 2: " + str(skew_s2_US))
+print("Skew - Unscaled 3: " + str(skew_s3_US))
+
+
+# Geometric Mean & Standard Deviation
+
+# Geometric Mean:
+    
+def geo_mean(iterable):
+    a = np.array(iterable) + 1
+    return (a.prod() ** (1/len(a))) - 1
+
+# Geo_Mean - Risk Managed Strategies:
+print("Geometric Mean - Risk Managed Strategies in perceantage points:")
+geo_mean_s1 = (((geo_mean(risk_mng_momentum_s1/100) + 1) ** 12) - 1) * 100
+geo_mean_s2 = (((geo_mean(risk_mng_momentum_s2/100) + 1) ** 12) - 1) * 100
+geo_mean_s3 = (((geo_mean(risk_mng_momentum_s3/100) + 1) ** 12) - 1) * 100
+print("Strategy 1: " + str(geo_mean_s1))
+print("Strategy 2: " + str(geo_mean_s2))
+print("Strategy 3: " + str(geo_mean_s3))
+
+# Geo_Mean - UnScaled Strat:
+print("\nGeometric Mean - Unscaled Strategies in perceantage points:")
+geo_mean_s1_US = (((geo_mean(momentum_perf_s1_monthly/100) + 1) ** 12) - 1) * 100
+geo_mean_s2_US = (((geo_mean(momentum_perf_s2_monthly/100) + 1) ** 12) - 1) * 100
+geo_mean_s3_US =(((geo_mean(momentum_perf_s3_monthly/100) + 1) ** 12) - 1) * 100
+print("Strategy 1: " + str(geo_mean_s1_US))
+print("Strategy 2: " + str(geo_mean_s2_US))
+print("Strategy 3: " + str(geo_mean_s3_US))
+
+
+# Std - Risk Managed Strategies:
+print("\nStd - Risk Managed Strategies:")
+std_s1 = np.std(risk_mng_momentum_s1) * np.sqrt(12)
+std_s2 = np.std(risk_mng_momentum_s2) * np.sqrt(12)
+std_s3 = np.std(risk_mng_momentum_s3) * np.sqrt(12)
+
+print("Strategy 1: " + str(std_s1))
+print("Strategy 2: " + str(std_s2))
+print("Strategy 3: " + str(std_s3))
+
+
+
+
+# Std - UnScaled Strat:
+print("\nStd - UnScaled Strat:")
+std_s1_US = np.std(momentum_perf_s1_monthly) * np.sqrt(12)
+std_s2_US = np.std(momentum_perf_s2_monthly) * np.sqrt(12)
+std_s3_US = np.std(momentum_perf_s3_monthly) * np.sqrt(12)
+
+print("Strategy 1: " + str(std_s1_US))
+print("Strategy 2: " + str(std_s2_US))
+print("Strategy 3: " + str(std_s3_US))
+
+# Sharpe-Ratio - Risk Managed Strategies:
+rf = 0
+#cum_risk_mom_ret_s1 = (np.cumprod((risk_mng_momentum_s1/100) + 1) - 1) * 100
+#cum_risk_mom_ret_s2 = (np.cumprod((risk_mng_momentum_s2/100) + 1) - 1) * 100
+#cum_risk_mom_ret_s3 = (np.cumprod((risk_mng_momentum_s3/100) + 1) - 1) * 100
+
+print("Sharpe-Ratio - Risk Managed Strategies:")
+print("Strategy 1: " + str((geo_mean_s1 - rf)/ std_s1))
+print("Strategy 2: " + str((geo_mean_s2 - rf)/ std_s2))
+print("Strategy 3: " + str((geo_mean_s3 - rf)/ std_s3))
+
+
+print("\nSharpe-Ratio - Unscaled Strategies:")
+print("Strategy 1: " + str((geo_mean_s1_US - rf)/ std_s1_US))
+print("Strategy 2: " + str((geo_mean_s2_US - rf)/ std_s2_US))
+print("Strategy 3: " + str((geo_mean_s3_US - rf)/ std_s3_US))
+
+
+# d) 
+# Get right timeframe till end 2011
+# Risk managed 2011
+risk_mng_momentum_s1_11 = risk_mng_momentum_s1[0:risk_mng_momentum_s1.index.get_loc("2012-01-31 00:00:00")]
+risk_mng_momentum_s2_11 = risk_mng_momentum_s2[0:risk_mng_momentum_s2.index.get_loc("2012-01-31 00:00:00")]
+risk_mng_momentum_s3_11 = risk_mng_momentum_s3[0:risk_mng_momentum_s3.index.get_loc("2012-01-31 00:00:00")]
+
+print(risk_mng_momentum_s1_11.tail())
+
+
+# Unscaled 2011
+momentum_perf_s1_monthly_11 = momentum_perf_s1_monthly[0:momentum_perf_s1_monthly.index.get_loc("2012-01-31 00:00:00")]
+momentum_perf_s2_monthly_11 = momentum_perf_s2_monthly[0:momentum_perf_s2_monthly.index.get_loc("2012-01-31 00:00:00")]
+momentum_perf_s3_monthly_11 = momentum_perf_s3_monthly[0:momentum_perf_s3_monthly.index.get_loc("2012-01-31 00:00:00")]
+
+print("\n")
+print(momentum_perf_s1_monthly_11.tail())
+
+
+# Calculate same statistics as in c) with the shorter time period:
+
+# Max - Risk Managed Strategies:
+max_s1_11 = np.max(risk_mng_momentum_s1_11)
+max_s2_11 = np.max(risk_mng_momentum_s2_11)
+max_s3_11 = np.max(risk_mng_momentum_s3_11)
+
+# Max - UnScaled Strat:
+max_s1_US_11 = np.max(momentum_perf_s1_monthly_11)
+max_s2_US_11 = np.max(momentum_perf_s2_monthly_11)
+max_s3_US_11 = np.max(momentum_perf_s3_monthly_11)
+
+
+# Min - Risk Managed Strategies:
+min_s1_11 = np.min(risk_mng_momentum_s1_11)
+min_s2_11 = np.min(risk_mng_momentum_s2_11)
+min_s3_11 = np.min(risk_mng_momentum_s3_11)
+
+# Min - UnScaled Strat:
+min_s1_US_11 = np.min(momentum_perf_s1_monthly_11)
+min_s2_US_11 = np.min(momentum_perf_s2_monthly_11)
+min_s3_US_11 = np.min(momentum_perf_s3_monthly_11)
+
+print("Maxima: ")
+print("Risk managed Strategy 1: " + str(max_s1_11))
+print("Unscaled Strategy 1: " + str(max_s1_US_11))
+
+print("\nMinima: ")
+print("Risk managed Strategy 1: " + str(min_s1_11))
+print("Unscaled Strategy 1: " + str(min_s1_US_11))
+
+
+# Kurtosis & Skew
+
+# Kurtosis - Risk Managed Strategies:
+kurt_s1_11 = st.kurtosis(risk_mng_momentum_s1_11)
+kurt_s2_11 = st.kurtosis(risk_mng_momentum_s2_11)
+kurt_s3_11 = st.kurtosis(risk_mng_momentum_s3_11)
+
+# Kurtosis - UnScaled Strat:
+kurt_s1_US_11 = st.kurtosis(momentum_perf_s1_monthly_11)
+kurt_s2_US_11 = st.kurtosis(momentum_perf_s2_monthly_11)
+kurt_s3_US_11 = st.kurtosis(momentum_perf_s3_monthly_11)
+
+
+# Skew - Risk Managed Strategies:
+skew_s1_11 = st.skew(risk_mng_momentum_s1_11)
+skew_s2_11 = st.skew(risk_mng_momentum_s2_11)
+skew_s3_11 = st.skew(risk_mng_momentum_s3_11)
+
+# Skew - UnScaled Strat:
+skew_s1_US_11 = st.skew(momentum_perf_s1_monthly_11)
+skew_s2_US_11 = st.skew(momentum_perf_s2_monthly_11)
+skew_s3_US_11 = st.skew(momentum_perf_s3_monthly_11)
+
+print("Kurtosis: ")
+print("Risk managed Strategy 1: " + str(kurt_s1_11))
+print("Unscaled Strategy 1: " + str(kurt_s1_US_11))
+
+print("\nSkew")
+print("Risk managed Strategy 1: " + str(skew_s1_11))
+print("Unscaled Strategy 1: " + str(skew_s1_US_11))
+
+
+# Geometric Mean & Standard Deviation
+
+# Geo_Mean - Risk Managed Strategies:
+print("Geometric Mean:")
+geo_mean_s1_11 = (((geo_mean(risk_mng_momentum_s1_11/100) + 1) ** 12) - 1) * 100
+geo_mean_s2_11 = (((geo_mean(risk_mng_momentum_s2_11/100) + 1) ** 12) - 1) * 100
+geo_mean_s3_11 = (((geo_mean(risk_mng_momentum_s3_11/100) + 1) ** 12) - 1) * 100
+print("Risk managed: " + str(geo_mean_s1_11))
+
+
+# Geo_Mean - UnScaled Strat:
+print("\nUnscaled Strategy:")
+geo_mean_s1_US_11 = (((geo_mean(momentum_perf_s1_monthly_11/100) + 1) ** 12) - 1) * 100
+geo_mean_s2_US_11 = (((geo_mean(momentum_perf_s2_monthly_11/100) + 1) ** 12) - 1) * 100
+geo_mean_s3_US_11 =(((geo_mean(momentum_perf_s3_monthly_11/100) + 1) ** 12) - 1) * 100
+print("Unscaled: " + str(geo_mean_s1_US_11))
+
+
+
+# Std - Risk Managed Strategies:
+print("\nStd - Risk Managed Strategies:")
+std_s1_11 = np.std(risk_mng_momentum_s1_11) * np.sqrt(12)
+std_s2_11 = np.std(risk_mng_momentum_s2_11) * np.sqrt(12)
+std_s3_11 = np.std(risk_mng_momentum_s3_11) * np.sqrt(12)
+print("Risk managed: " + str(std_s1_11))
+
+
+
+
+
+# Std - UnScaled Strat:
+print("\nStd - UnScaled Strat:")
+std_s1_US_11 = np.std(momentum_perf_s1_monthly_11) * np.sqrt(12)
+std_s2_US_11 = np.std(momentum_perf_s2_monthly_11) * np.sqrt(12)
+std_s3_US_11 = np.std(momentum_perf_s3_monthly_11) * np.sqrt(12)
+print("Unscaled: " + str(std_s1_US_11))
+
+
+# Sharpe-Ratios:
+
+print("Sharpe-Ratio - Risk Managed Strategy:")
+print((geo_mean_s1_11 - rf)/ std_s1_11)
+
+print("Sharpe-Ratio - Unscaled Strategy:")
+print((geo_mean_s1_US_11 - rf)/ std_s1_US_11)
+
+
+
+#Get Data
+portfolios2 = web.DataReader('F-F_Research_Data_Factors', 'famafrench', start = 1900)
+print(portfolios2['DESCR'])
+
+returns2 = portfolios2[0]
+print(returns2.head())
+
+mkt_ret = returns2["Mkt-RF"] + returns2["RF"]
+mkt_ret = mkt_ret[10:]
+mkt_ret_gross = (mkt_ret/100) + 1
+
+
+# 24 Month case 
+cum_ret_24m = (mkt_ret_gross.rolling(window=24).agg(lambda x : x.prod()) - 1)
+
+a24 = []
+
+for i in cum_ret_24m:
+    if i > 0:
+        a24.append(1)
+    else:
+        a24.append(0)
+        
+        
+
+# 12 Month case
+cum_ret_12m = (mkt_ret_gross.rolling(window=12).agg(lambda x : x.prod()) - 1)
+
+a12 = []
+
+for i in cum_ret_12m:
+    if i > 0:
+        a12.append(1)
+    else:
+        a12.append(0)
+
+# b)
+
+a24_b = list(map(bool,a24))
+print(a24_b[0:5])
+a12_b = list(map(bool,a12))
+print(a12_b[0:5])
+dt_4 = risk_mng_momentum_s1.index
+
+# Risk Managed Strategies
+# Strategy 1
+bull_RM_24_s1 = risk_mng_momentum_s1[a24_b]
+bull_RM_12_s1 = risk_mng_momentum_s1[a12_b]
+
+bull_RM_24_s1 = pd.Series(bull_RM_24_s1, index = dt_4).fillna(0)
+bull_RM_12_s1 = pd.Series(bull_RM_12_s1, index = dt_4).fillna(0)
+
+# Strategy 2
+bull_RM_24_s2 = risk_mng_momentum_s2[a24_b]
+bull_RM_12_s2 = risk_mng_momentum_s2[a12_b]
+
+bull_RM_24_s2 = pd.Series(bull_RM_24_s2, index = dt_4).fillna(0)
+bull_RM_12_s2 = pd.Series(bull_RM_12_s2, index = dt_4).fillna(0)
+
+# Strategy 3
+bull_RM_24_s3 = risk_mng_momentum_s3[a24_b]
+bull_RM_12_s3 = risk_mng_momentum_s3[a12_b]
+
+bull_RM_24_s3 = pd.Series(bull_RM_24_s3, index = dt_4).fillna(0)
+bull_RM_12_s3 = pd.Series(bull_RM_12_s3, index = dt_4).fillna(0)
+
+
+# Unscaled Strategies
+# shorten the timeframe of the array to fit the other one and thus the strategy
+momentum_perf_s1_monthly_red = momentum_perf_s1_monthly[6:]
+momentum_perf_s2_monthly_red = momentum_perf_s2_monthly[6:]
+momentum_perf_s3_monthly_red = momentum_perf_s3_monthly[6:]
+
+# Strategy 1
+bull_US_24_s1 = momentum_perf_s1_monthly_red[a24_b]
+bull_US_12_s1 = momentum_perf_s1_monthly_red[a12_b]
+
+bull_US_24_s1 = pd.Series(bull_US_24_s1, index = dt_4).fillna(0)
+bull_US_12_s1 = pd.Series(bull_US_12_s1, index = dt_4).fillna(0)
+
+# Strategy 2
+bull_US_24_s2 = momentum_perf_s2_monthly_red[a24_b]
+bull_US_12_s2 = momentum_perf_s2_monthly_red[a12_b]
+
+bull_US_24_s2 = pd.Series(bull_US_24_s2, index = dt_4).fillna(0)
+bull_US_12_s2 = pd.Series(bull_US_12_s2, index = dt_4).fillna(0)
+
+# Strategy 3
+bull_US_24_s3 = momentum_perf_s3_monthly_red[a24_b]
+bull_US_12_s3 = momentum_perf_s3_monthly_red[a12_b]
+
+bull_US_24_s3 = pd.Series(bull_US_24_s3, index = dt_4).fillna(0)
+bull_US_12_s3 = pd.Series(bull_US_24_s3, index = dt_4).fillna(0)
+
+
+# Calculate Statistics
+
+strategies_rsk_mgn_lst = [bull_RM_24_s1, bull_RM_12_s1, bull_RM_24_s2, bull_RM_12_s2, bull_RM_24_s3, bull_RM_12_s3]
+strategies_US_lst = [bull_US_24_s1, bull_US_12_s1, bull_US_24_s2, bull_US_12_s2, bull_US_24_s3, bull_US_12_s3]
+
+t = 1
+for n in strategies_rsk_mgn_lst:
+    print("\nRisk Managed Strategies, Iteration: " + str(t))
+    print(np.max(n))
+    print(np.min(n))
+    print(st.kurtosis(n))
+    print(st.skew(n))
+    print((((geo_mean(n/100) + 1) ** 12) - 1) * 100)
+    print(np.std(n) * np.sqrt(12))
+    print((((((geo_mean(n/100) + 1) ** 12) - 1) * 100) - rf) / (np.std(n) * np.sqrt(12)))
+    t += 1
+
+
+k = 1
+for n in strategies_US_lst:
+    print("\nUnscaled Strategies, Iteration: " + str(k))
+    print(np.max(n))
+    print(np.min(n))
+    print(st.kurtosis(n))
+    print(st.skew(n))
+    print((((geo_mean(n/100) + 1) ** 12) - 1) * 100)
+    print(np.std(n) * np.sqrt(12))
+    print((((((geo_mean(n/100) + 1) ** 12) - 1) * 100) - rf) / (np.std(n) * np.sqrt(12)))
+    k += 1
+
+
+
+# Exercise 3c) 
+# (standard, risk-managed, standard-nobear24, standard-nobear12, 
+# risk-managed-nobear24, risk-managed-nobear12).
+
+# 1. Plot: Classic (here Strategy 1)
+
+# Step 1: Get all cumulative returns
+# From Exercise 4:
+standard_s1 = cum_momentum_perf_s1_monthly[6:]
+rsk_managed_s1 = (np.cumprod(risk_mng_momentum_s1/100 + 1) - 1) * 100
+standard_nobear24_s1 = (np.cumprod(bull_US_24_s1/100 + 1) - 1) * 100
+standard_nobear12_s1 = (np.cumprod(bull_US_12_s1/100 + 1) - 1) * 100
+rsk_managed_nobear24_s1 = (np.cumprod(bull_RM_24_s1/100 + 1) - 1) * 100
+rsk_managed_nobear12_s1 = (np.cumprod(bull_RM_12_s1/100 + 1) - 1) * 100
+
+
+cumulative_returns_s1 = (pd.DataFrame([standard_s1, rsk_managed_s1, standard_nobear24_s1, 
+                                       standard_nobear12_s1, rsk_managed_nobear24_s1, 
+                                       rsk_managed_nobear12_s1])).T
+
+cumulative_returns_s1.columns = ["standard_s1", "rsk_managed_s1", "standard_nobear24_s1", 
+                                  "standard_nobear12_s1", "rsk_managed_nobear24_s1", 
+                                  "rsk_managed_nobear12_s1"]
+
+
+graph3 = plt.plot(cumulative_returns_s1)
+lables3 = cumulative_returns_s1.columns
+plt.xlabel('Time', fontsize=18)
+plt.ylabel('LOG-Returns', fontsize=18)
+plt.legend(graph3, lables3)
+plt.yscale('log')
+plt.show()
+
+
+# 2. Plot: Only large stocks (here strategy 2 or s2)
+
+standard_s2 = cum_momentum_perf_s2_monthly[6:]
+rsk_managed_s2 = (np.cumprod(risk_mng_momentum_s2/100 + 1) - 1) * 100
+standard_nobear24_s2 = (np.cumprod(bull_US_24_s2/100 + 1) - 1) * 100
+standard_nobear12_s2 = (np.cumprod(bull_US_12_s2/100 + 1) - 1) * 100
+rsk_managed_nobear24_s2 = (np.cumprod(bull_RM_24_s2/100 + 1) - 1) * 100
+rsk_managed_nobear12_s2 = (np.cumprod(bull_RM_12_s2/100 + 1) - 1) * 100
+
+
+cumulative_returns_s2 = (pd.DataFrame([standard_s2, rsk_managed_s2, standard_nobear24_s2, 
+                                       standard_nobear12_s2, rsk_managed_nobear24_s2, 
+                                       rsk_managed_nobear12_s2])).T
+
+cumulative_returns_s2.columns = ["standard_s2", "rsk_managed_s2", "standard_nobear24_s2", 
+                                  "standard_nobear12_s2", "rsk_managed_nobear24_s2", 
+                                  "rsk_managed_nobear12_s2"]
+
+
+graph4 = plt.plot(cumulative_returns_s2)
+lables4 = cumulative_returns_s2.columns
+plt.xlabel('Time', fontsize=18)
+plt.ylabel('LOG-Returns', fontsize=18)
+plt.legend(graph4, lables4)
+plt.yscale('log')
+plt.show()
+
+
+
+
+# 3. Plot: Only large stocks (here strategy 3 or s3)
+
+standard_s3 = cum_momentum_perf_s3_monthly[6:]
+rsk_managed_s3 = (np.cumprod(risk_mng_momentum_s3/100 + 1) - 1) * 100
+standard_nobear24_s3 = (np.cumprod(bull_US_24_s3/100 + 1) - 1) * 100
+standard_nobear12_s3 = (np.cumprod(bull_US_12_s3/100 + 1) - 1) * 100
+rsk_managed_nobear24_s3 = (np.cumprod(bull_RM_24_s3/100 + 1) - 1) * 100
+rsk_managed_nobear12_s3 = (np.cumprod(bull_RM_12_s3/100 + 1) - 1) * 100
+
+
+cumulative_returns_s3 = (pd.DataFrame([standard_s3, rsk_managed_s3, standard_nobear24_s3, 
+                                       standard_nobear12_s3, rsk_managed_nobear24_s3, 
+                                       rsk_managed_nobear12_s3])).T
+
+cumulative_returns_s3.columns = ["standard_s3", "rsk_managed_s3", "standard_nobear24_s3", 
+                                  "standard_nobear12_s3", "rsk_managed_nobear24_s3", 
+                                  "rsk_managed_nobear12_s3"]
+
+
+graph5 = plt.plot(cumulative_returns_s3)
+lables5 = cumulative_returns_s3.columns
+plt.xlabel('Time', fontsize=18)
+plt.ylabel('LOG-Returns', fontsize=18)
+plt.legend(graph5, lables5)
+plt.yscale('log')
+plt.show()
+
+
+# a)
+# Get Data
+portfolios3= web.DataReader('5_Industry_Portfolios', 'famafrench', start = 1900)
+print(portfolios3['DESCR'])
+
+returns3 = portfolios3[0]
+print(returns3.head())
+ret3_gross = returns3/100 + 1
+# window from t-12 to t-2 --> 11 steps
+
+cum_ret_industry = (ret3_gross.rolling(window=11).agg(lambda x : x.prod())) - 1
+# t-12 to t-2 for t
+cum_ret_industry = cum_ret_industry.dropna()
+print(cum_ret_industry)
+
+
+#b) 
+
+# investment plan 
+invest_lng = pd.Series(cum_ret_industry.idxmax(axis=1).shift(2), index=(cum_ret_industry.index)).fillna(0)
+invest_srt = pd.Series(cum_ret_industry.idxmin(axis=1).shift(2), index=(cum_ret_industry.index)).fillna(0)
+
+returns_lng = []
+returns_srt = []
+
+for idx, itm in invest_lng.iteritems():
+    returns_lng.append(returns3.loc[idx][itm])
+
+for idx, itm in invest_srt.iteritems():
+    returns_srt.append(returns3.loc[idx][itm])
+
+returns_lng = pd.Series(returns_lng, index = invest_lng.index)
+returns_srt = pd.Series(returns_srt, index = invest_lng.index)
+
+
+# calculate cumulative returns of both long and short
+returns_lng_cum = (np.cumprod(returns_lng/100 + 1) - 1) * 100
+
+returns_srt_cum = (np.cumprod(returns_srt/100 + 1) - 1) * 100
+
+
+# I assume that the total return here can be calculated as above. As the difference between the long 
+# and the short leg. 
+
+returns_total = returns_lng - returns_srt
+print(returns_total)
+returns_total_cum = ((np.cumprod(returns_total/100 + 1) - 1) * 100)
+print(returns_total_cum)
+dt_5 = returns_total.index
+
+
+# c)
+# reduce length to fit the no-bear indicators (only adjusted with 24m - longst one - to stay comparable)
+industry_momentum = returns_total[:]
+
+industry_momentum_nobear24 = returns_total[a24_b]
+industry_momentum_nobear24 = pd.Series(industry_momentum_nobear24, index = dt_5).fillna(0)
+
+
+industry_momentum_nobear12 = returns_total[a12_b]
+industry_momentum_nobear12 = pd.Series(industry_momentum_nobear12, index = dt_5).fillna(0)
+
+industry_strats = [industry_momentum, industry_momentum_nobear24, industry_momentum_nobear12]
+
+u = 1
+for n in industry_strats:
+    print("Iteration: " + str(u))
+    print("Max: " + str(np.max(n)))
+    print("Min: " + str(np.min(n)))
+    print("Kurtosis: " + str(st.kurtosis(n)))
+    print("Skew: " + str(st.skew(n)))
+    print("Geo-Mean: ")
+    print(((((geo_mean(n/100) + 1) ** 12) - 1) * 100))
+    print("Std: " + str(np.std(n) * np.sqrt(12)))
+    print("Sharpe Ratio: ")
+    print(((((((geo_mean(n/100) + 1) ** 12) - 1) * 100) - rf) / (np.std(n) * np.sqrt(12))))
+    u += 1
+
+
+industry_momentum_cum_fill = pd.to_numeric(pd.Series(returns_total_cum, index = dt_5).fillna(0))
+industry_momentum_nobear24_cum = pd.to_numeric((np.cumprod(industry_momentum_nobear24/100 + 1) - 1) * 100)
+industry_momentum_nobear12_cum = pd.to_numeric((np.cumprod(industry_momentum_nobear12/100 + 1) - 1) * 100)
+
